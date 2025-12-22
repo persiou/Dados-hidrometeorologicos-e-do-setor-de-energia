@@ -1,1 +1,1 @@
-API para obter dados da ANA, ONS, ANEEL e CCEE
+Informações e download dos dados disponibilizados pela ANA, ONS, ANEEL e CCEE
