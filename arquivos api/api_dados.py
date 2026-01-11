@@ -4,8 +4,86 @@ import requests
 import pandas as pd
 import xml.etree.ElementTree as ET
 import calendar
-import pandas as pd
 import io
+
+
+
+def definir_host(instituicao):
+    mapping = {
+        "ccee": "https://dadosabertos.ccee.org.br",
+        "ons": "https://dados.ons.org.br",
+        "aneel": "https://dadosabertos.aneel.gov.br"
+    }
+    host = mapping.get(instituicao.lower())
+
+    return host
+
+def listar_produtos(instituicao):
+
+    if instituicao=='ana':
+        return ['vazao', 'chuva', 'cota']
+
+    else:
+        host= definir_host(instituicao)
+        try:
+            r = requests.get(f"{host}/api/3/action/package_list")
+            r.raise_for_status()
+            return r.json().get("result", [])
+        except Exception as e:
+            print(f"Erro ao listar produtos: {e}")
+            return []
+        
+
+
+
+
+
+def listar_estacoes_ana(produto=None, state='', city=''):
+    
+    if produto is None:
+            raise ValueError("É necessário fornecer o nome do produto ('vazao', 'chuva' ou 'cota')")
+    if produto== 'vazao':
+        tipo= '1'
+    elif produto=='chuva':
+        tipo= '2'
+    elif produto== 'cota':
+        tipo= '3'
+
+    url = 'http://telemetriaws1.ana.gov.br/ServiceANA.asmx/HidroInventario'
+    
+    params = {
+        'codEstDE': '',
+        'codEstATE': '',
+        'tpEst': tipo,  # 1= fluviométrica
+        'nmEst': '',
+        'nmRio': '',
+        'codSubBacia': '',
+        'codBacia': '',
+        'nmMunicipio': city,
+        'nmEstado': state,
+        'sgResp': '',
+        'sgOper': '',
+        'telemetrica': ''
+    }
+    
+    response = requests.get(url, params=params, timeout=120)
+    tree = ET.ElementTree(ET.fromstring(response.content))
+    root = tree.getroot()
+    
+    stations = []
+    for station in root.iter('Table'):
+        stations.append({
+            'Code': f'{int(station.find("Codigo").text):08}',
+            'Name': station.find('Nome').text,
+            'City': station.find('nmMunicipio').text,
+            'State': station.find('nmEstado').text,
+            'Latitude': float(station.find('Latitude').text),
+            'Longitude': float(station.find('Longitude').text)
+        })
+    
+    return pd.DataFrame(stations)
+    
+
 
 
 
@@ -79,40 +157,6 @@ def dados_ana(list_station, data_type, threads=10):
         return data_stations
 
 
-
-
-
-def definir_host(instituicao):
-    mapping = {
-        "ccee": "https://dadosabertos.ccee.org.br",
-        "ons": "https://dados.ons.org.br",
-        "aneel": "https://dadosabertos.aneel.gov.br"
-    }
-    host = mapping.get(instituicao.lower())
-
-    return host
-
-
-
-def listar_produtos(instituicao):
-
-    if instituicao=='ana':
-        return ['vazao', 'chuva', 'cota']
-
-    else:
-        host= definir_host(instituicao)
-        try:
-            r = requests.get(f"{host}/api/3/action/package_list")
-            r.raise_for_status()
-            return r.json().get("result", [])
-        except Exception as e:
-            print(f"Erro ao listar produtos: {e}")
-            return []
-
-
-
-
-
 # procura a url dos arquivos dentro de um produto
 def buscar_arquivos(host, produto):
     r = requests.get(f"{host}/api/3/action/package_show?id={produto}")
@@ -152,10 +196,6 @@ def baixar_dados_produto(instituicao, produto):
     if dfs_validos:
         return pd.concat(dfs_validos, ignore_index=True)
     return None
-
-
-
-
 
 
 def coletar_dados(instituicao, produto=None, estacoes=None):
